@@ -1,0 +1,162 @@
+---
+title: "Pollen Clustering and ANOVAs"
+author: "Andrea J. Elhajj"
+date: "6/9/2019"
+output: github_document
+---
+
+## Introduction
+
+This data set contains pollen data collected from 58 surface sites in Yellowstone National Park. The pollen abundance of various vegetative species at each site are stored in columns 4 through 35; values have been square-root transformed to achieve normality. Column 3 contains a factor (1 - 5) which corresponds to one of five vegetation zones that were subjectively assigned by a researcher at University of Vermont: ("Steppe", "Lodgepole", "Trans", "Subalpine", "Alpine"). 
+
+## Part 1: K-Means and Hierarchical Clustering
+
+We are interested in running two clustering methods to assign individual observations to natural groupings, and then compare these natural groupings to the researcher’s expert-assigned classes.
+
+```{r}
+library(dplyr)
+library(ggplot2)
+library(readr)
+```
+
+First, we must scale the pollen data and calculate the dissimilarities (Euclidean distances) between the pollen abundances: 
+
+```{r}
+df <- read_csv("yellpolsqrt.csv")
+head(df)
+
+Pollen_df <- as.data.frame(df[, 4:35]) # Extract columns containing pollen data
+Pollen_df_sc <- scale(Pollen_df) # Scale the data
+head(Pollen_df_sc)
+
+d <- dist(Pollen_df_sc, method = "euclidean")
+```
+
+Next, we will use these distances to run a hierarchical clustering analysis on these values. We will label the dendrogram with the expert-assigned vegetation zones:
+
+```{r}
+hc <- hclust(d, method = "ward.D2") # Hierarchical clustering using Ward's method
+plot(hc, cex = 0.6, hang = -1) # Plot the obtained dendrogram
+rect.hclust(hc, k = 5, border = 1:5) # Create boxes around clusters in dendrogram
+legend(-2,21, 
+       #legend = c("1", "2", "3", "4", "5"),
+       legend = c("Trans","Subalpine","Alpine","Lodgepole","Steppe"),
+       col = c("black","red","green","blue","cyan"),
+       pch = c(15), 
+       bty = "n", 
+       text.col = "black",
+       bg = "transparent",
+       horiz = T , 
+       inset = c(0.1, 0.1))
+```
+
+The hierarchichal clustering output above shows that 6 members have been clustered into the Trans species cluster, 15 in the Subalpine species, 22 in Alpine, 1 in Lodgepole, and 14 in the Steppe.
+
+Let's add a column to the data that contains the cluster each member belongs to:
+
+```{r}
+sub_grp <- cutree(hc, k = 5) # Cut tree into 5 groups
+df_final <- mutate(df, cluster = sub_grp)
+head(df_final)
+```
+
+We will now compare this clustering result to the expert-assigned classification w/a contingency table:
+
+```{r}
+dat <- table(df_final$Veg,df_final$cluster)
+names(dimnames(dat)) <- c("Classification", "Cluster")
+dat
+```
+
+We would like to compare the output from this hierarchical clustering to a k-means clustering.
+
+The k-means method is an agglomerative clustering algorithm, not a recursively dividing one. Thus because there is no clustering hierarchy, there is no dendrogram visualization.  
+
+```{r}
+kc <- kmeans(Pollen_df_sc, centers = 5, nstart = 25)
+sub_grp2 <- kc$cluster
+```
+
+Add the cluster each observation belongs in to our original data:
+
+```{r}
+df_final2 <- mutate(df, cluster = sub_grp2)
+head(df_final2)
+```
+
+Create a contingency table:
+
+```{r}
+dat2 <- table(df_final2$Veg,df_final2$cluster)
+names(dimnames(dat2)) <- c("Classification", "Cluster")
+dat2
+```
+
+The output from each method shows that the hierarchal clustering resulted in clusters that more closely matched the initial classification conducted by the researcher than the k-means clustering did. This is observable by following the diagonal of the data from the top left corner to the bottom right corner (a total of 23 of the observation matched in the hierarchal clustering, while only 5 matched in the k-means clustering analysis). 
+
+The output from the two methods differs because of the methods underlying hierarchal and k-means clustering. The objective function of a k-means algorithm is to minimize within cluster sum of squares, while a hierarchal clustering algorithm relies on distance to group together observations that are more like one another. The application of a hierarchal clustering algorithm is ideal for smaller sets of data, while a k-means algorithm works best for large sets of data. This is a smaller data set, containing 58 observations. Therefore, it is understandable that the hierarchal clustering resulted in an output that is more in line with the classification that the researcher conducted based on the similarities he/she studied. 
+
+## Part 2: Boxplots and ANOVAs
+
+Next, we are interested in examining the following three pollen types more closely:
+
+1. Pinusalbi
+2. Salix
+3. Artemisia
+
+For each of these three pollen types, we will generate box plots of transformed values by cluster from the hierarchical clustering result above.   
+
+To begin, we will extract the pollen type and cluster column from the data frame:
+
+```{r}
+Pinusalbi_df <- data.frame(df_final$Pinusalbi, df_final$cluster)
+Salix_df <- data.frame(df_final$Salix, df_final$cluster)
+Artemisia_df <- data.frame(df_final$Artemisia, df_final$cluster)
+```
+
+And now we will create box plots of transformed values by cluster:
+
+```{r}
+ggplot(Pinusalbi_df, aes(x = factor(df_final.cluster), y = df_final.Pinusalbi)) + 
+  geom_boxplot() +
+        labs(x = "Cluster", y = "Pollen Count", title = "Pinusalbi by Cluster") +
+        scale_x_discrete(labels=c("1" = "Steppe", "2" = "Lodgepole", "3" = "Trans", "4" = "Subalpine", "5" = "Alpine"))
+
+ggplot(Salix_df, aes(x = factor(df_final.cluster), y = df_final.Salix)) + 
+  geom_boxplot() +
+        labs(x = "Cluster", y = "Pollen Count", title = "Salix by Cluster") +
+        scale_x_discrete(labels=c("1" = "Steppe", "2" = "Lodgepole", "3" = "Trans", "4" = "Subalpine", "5" = "Alpine"))
+
+ggplot(Artemisia_df, aes(x = factor(df_final.cluster), y = df_final.Artemisia)) + 
+  geom_boxplot() +
+        labs(x = "Cluster", y = "Pollen Count", title = "Artemisia by Cluster") + 
+        scale_x_discrete(labels=c("1" = "Steppe", "2" = "Lodgepole", "3" = "Trans", "4" = "Subalpine", "5" = "Alpine"))
+```
+
+Are the means of each pollen type by cluster different from the overall mean? While the box plots above help us answer this question, we will run an Analysis of Variance (ANOVA) for each pollen type by cluster assignment:
+
+```{r}
+Pinusalbi_aov<- aov(df_final.Pinusalbi ~ as.factor(df_final.cluster), data = Pinusalbi_df)
+Salix_aov <- aov(df_final.Salix ~ as.factor(df_final.cluster), data = Salix_df)
+Artemisia_aov <- aov(df_final.Artemisia ~ as.factor(df_final.cluster), data = Artemisia_df)
+
+summary(Pinusalbi_aov)
+summary(Salix_aov)
+summary(Artemisia_aov)
+```
+
+For Pinusalbi, the evidence suggests that at the there is a significant relationship between the pollen count and cluster assignment (F = 2.92, p = 0.03). For Salix, there is not enough evidence to suggest that such a relationship exists (F = 1.61, p = 0.19). Lastly, the ANOVA results for Artemisia, the evidence suggests that there is indeed a significant relationship between pollen count and cluster (F = 12.88, p = 2.14e-0.7). All of these tests were conducted at the 95% level of confidence. 
+
+However, the ANOVA tests do not tell us which groups are different from the others. For this, we will use the Tukey post-hoc test: 
+
+```{r}
+TukeyHSD(Pinusalbi_aov)
+TukeyHSD(Salix_aov)
+TukeyHSD(Artemisia_aov)
+```
+
+For Pinusalbi, this test shows that there is a significant difference in pollen means between cluster groups Subalpine and Alpine (p = 0.05).
+
+For Artemisia, there is a significant difference in pollen means between cluster groups Subalpine and Steppe (p < 0.0005), groups Alpine and Steppe (p < 0.0005), groups Subalpine and Lodgepole (p = 0.04), groups Subalpine and Trans (p = 0.001).
+
+
